@@ -1,0 +1,6 @@
+keras
+librosa
+scipy
+matplotlib
+numpy
+pysoundfile

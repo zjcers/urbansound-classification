@@ -1,0 +1,10 @@
+{
+    "python.pythonPath": "/usr/bin/python3",
+    "files.watcherExclude": {
+        "**/.git/objects/**": true,
+        "**/.git/subtree-cache/**": true,
+        "**/node_modules/**": true,
+        "UrbanSound8K/**": true,
+        "tmp/**": true,
+    }
+}
