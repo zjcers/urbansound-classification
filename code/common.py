@@ -25,7 +25,7 @@ def mfcc_reshape(mfcc: numpy.ndarray, depth=params.MFCC_CNN_DEPTH):
     """
     Reshapes MFCCs to be of fixed size
     """
-    for lower in range(0, mfcc.shape[1], depth // params.MFCC_OVERLAP_FACTOR):
+    for lower in range(0, mfcc.shape[1], max(depth // params.MFCC_OVERLAP_FACTOR, 1)):
         upper = lower + depth
         if upper < mfcc.shape[1]:
             # print("Slicing from", lower, "to", upper, "from", mfcc.shape)
@@ -34,7 +34,7 @@ def mfcc_reshape(mfcc: numpy.ndarray, depth=params.MFCC_CNN_DEPTH):
 def load_wav_mono(filename):
     y, sr = soundfile.read(filename)
     if len(y.shape) == 2:
-        y.reshape(2, y.shape[0])
+        y = y.reshape(2, y.shape[0])
         y = librosa.core.to_mono(y)
     return y, sr
 
@@ -79,21 +79,20 @@ def augment(original_fn):
         chan_lbl = "left" if chan == 0 else "right"
         for shift in range(params.PITCH_LOWER, params.PITCH_UPPER + 1):
             shift_scalar = SHIFT_SCALE * shift + 1.0
+            shifted_data = original_data
+            if shift != 0:
+                shifted_data = librosa.effects.pitch_shift(original_data, sr, shift_scalar)
             for noise_level in range(0, params.NOISE_LEVELS + 1):
                 noise_scalar = NOISE_SCALE * noise_level
                 for pat in range(params.NOISE_PATTERNS + 1):
                     name = os.path.join("tmp", "%s-shift-%s-noise-lvl%s-pat%s-%s" % (chan_lbl, shift_scalar, noise_scalar, pat, original_fn))
                     # if not os.path.exists(name):
-                    noisy_data = original_data
+                    noisy_data = shifted_data
                     if noise_level != 0:
                         noise = numpy.random.randn(len(original_data))
                         noisy_data = original_data + noise_scalar * noise
-                    shifted_data = noisy_data
-                    if shift != 0:
-                        shifted_data = librosa.effects.pitch_shift(noisy_data, sr, shift_scalar)
-                    assert len(shifted_data) >= len(both_channels)
-                    # soundfile.write(name, shifted_data, sr)
                     yield sr, shifted_data, name
+
 def process_file(fn, y, sr):
     mfcc = find_mfcc(fn, y, sr)
     for slice in mfcc_reshape(mfcc):
@@ -106,12 +105,20 @@ def process_row(row):
         slices.extend(process_file(name, y, sr))
     return zip(itertools.repeat(row[CLASS_ID]), slices)
 
-def load_data(label_file_name="UrbanSound8K/metadata/UrbanSound8K.csv", fold_selector=lambda _: True):
+def load_data(label_file_name="UrbanSound8K/metadata/UrbanSound8K.csv", fold_selector=lambda _: True, augment=True):
     with open(label_file_name, 'r') as labels:
         reader = csv.reader(labels)
         next(reader)
         just_this_fold = filter(fold_selector, reader)
-        augmented_rows = itertools.chain.from_iterable(map(process_row, just_this_fold))
+        augmented_rows = []
+        if augment:
+            augmented_rows = itertools.chain.from_iterable(map(process_row, just_this_fold))
+        else:
+            for row in just_this_fold:
+                path = os.path.join("UrbanSound8K", "audio", "fold%s" % (row[FOLD],), row[SLICE_FILE_NAME])
+                y, sr = load_wav_mono(path)
+                for slice in mfcc_reshape(find_mfcc(path, y, sr)):
+                    augmented_rows.append((row[CLASS_ID], slice))
         print()
         cats = []
         samples = []
