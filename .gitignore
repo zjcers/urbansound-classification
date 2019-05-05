@@ -3,4 +3,5 @@
 **/*.zip
 **/*.hdf5
 **/*.npy
+env-urbsnd/**
 UrbanSound8K/**
